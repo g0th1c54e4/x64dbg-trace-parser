@@ -5,6 +5,7 @@
 #include <map>
 #include <fstream>
 #include <json/json.h>
+#include <capstone/capstone.h>
 
 #include "plugin.h"
 
@@ -22,20 +23,32 @@ typedef struct {
 	// LASTSTATUS lastStatus; // This field is not supported and not included in trace file.
 } TraceRegDump;
 
-enum class MemoryAccessType { READ, WRITE };
+enum class MemoryAccessType : uint8_t { READ, WRITE };
 struct MemoryAccessRecord {
 	MemoryAccessType type;
-	duint address;
+	bool read_and_write;
+	bool overwritten_or_identical; // memory value didn't change
+	uint8_t acc_size; // in bytes (e.g. qword dword word byte)
+	duint acc_address;
 	duint old_data;
 	duint new_data;
-	bool overwritten_or_identical; // memory value didn't change
+};
+
+struct RegChange {
+	size_t reg_offset; // base on 'reg_dump'
+	duint old_value;
+	duint new_value;
 };
 
 struct InstructionRecord {
+	duint ins_address; // eip(or rip) value
 	std::vector<uint8_t> bytes;
-	// uint8_t size;    // use 'bytes.size()' instead of 'size'.
+	// uint8_t size;    // use 'bytes.size()' instead of 'size','size' means what is the lenght(in bytes) of instruction.
 	std::vector<MemoryAccessRecord> mem_accs;
+	std::vector<RegChange> reg_changes;
 	TraceRegDump reg_dump;
+	uint32_t id; // (when 'id' is 0, it means instruction is the first one in trace file)
+	uint32_t dbg_id; // do not change!
 };
 
 struct TraceData {
@@ -45,6 +58,8 @@ struct TraceData {
 	std::string hashAlgorithm;
 	std::string hash;
 	std::string compression;
+
+	size_t ptr_size;
 
 	TraceDataArch arch;
 	std::vector<InstructionRecord> record;
