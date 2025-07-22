@@ -120,18 +120,16 @@ TraceData parse_x64dbg_trace(std::string filename) {
             reg_id += change;
             size_t reg_offset = (reg_id + i) * sizeof(duint);
             if (reg_offset < sizeof(TraceRegDump)) {
-                duint old_value = *(duint*)(((uint8_t*)&reg_dump) + reg_offset);
-                *(duint*)(((uint8_t*)&reg_dump) + reg_offset) = register_change_new_data[i];
+                duint* area_ptr = (duint*)(((uint8_t*)&reg_dump) + reg_offset);
+                duint old_value = *area_ptr;
+                duint new_value = register_change_new_data[i];
+                *area_ptr = new_value;
+
                 if (trace_data.record.size() >= 1) {
-                    RegChange change{};
-                    change.reg_offset = reg_offset;
-                    change.old_value = old_value;
-                    change.new_value = register_change_new_data[i];
-                    if (change.old_value != change.new_value) {
-                        trace_data.record.back().reg_changes.push_back(change);
+                    if (old_value != new_value) {
+                        trace_data.record.back().reg_changes[reg_offset] = std::make_pair(old_value, new_value);
                     }
                 }
-
             }
             else {
                 throw std::exception("Offset of regdump is invaild.");
@@ -153,7 +151,16 @@ TraceData parse_x64dbg_trace(std::string filename) {
             }
             for (size_t j = 0; j < pcsins->detail->x86.op_count; j++) {
                 if (pcsins->detail->x86.operands[j].type == X86_OP_MEM) {
-                    if (pcsins->detail->x86.operands[j].access == cs_ac_type::CS_AC_READ) {
+                    // movs
+                    if (pcsins->id == X86_INS_MOVSB || pcsins->id == X86_INS_MOVSW || pcsins->id == X86_INS_MOVSD || pcsins->id == X86_INS_MOVSQ) {
+                        mem_acc.type = MemoryAccessType::WRITE;
+                        mem_acc.read_and_write = true;
+                    }
+                    // cmps
+                    else if (pcsins->id == X86_INS_CMPSB || pcsins->id == X86_INS_CMPSW || pcsins->id == X86_INS_CMPSD || pcsins->id == X86_INS_CMPSQ) {
+                        mem_acc.type = MemoryAccessType::READ;
+                    }
+                    else if (pcsins->detail->x86.operands[j].access == cs_ac_type::CS_AC_READ) {
                         mem_acc.type = MemoryAccessType::READ;
                     }
                     else if (pcsins->detail->x86.operands[j].access == cs_ac_type::CS_AC_WRITE) {
@@ -164,6 +171,7 @@ TraceData parse_x64dbg_trace(std::string filename) {
                         mem_acc.read_and_write = true;
                     }
                     else { continue; }
+
                     mem_acc.acc_size = pcsins->detail->x86.operands[j].size;
                     break;
                 }

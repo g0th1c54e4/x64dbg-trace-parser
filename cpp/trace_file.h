@@ -29,15 +29,9 @@ struct MemoryAccessRecord {
 	bool read_and_write;
 	bool overwritten_or_identical; // memory value didn't change
 	uint8_t acc_size; // in bytes (e.g. qword dword word byte)
-	duint acc_address;
+	duint acc_address; // including segment base address
 	duint old_data;
 	duint new_data;
-};
-
-struct RegChange {
-	size_t reg_offset; // base on 'reg_dump'
-	duint old_value;
-	duint new_value;
 };
 
 struct InstructionRecord {
@@ -45,7 +39,7 @@ struct InstructionRecord {
 	std::vector<uint8_t> bytes;
 	// uint8_t size;    // use 'bytes.size()' instead of 'size','size' means what is the lenght(in bytes) of instruction.
 	std::vector<MemoryAccessRecord> mem_accs;
-	std::vector<RegChange> reg_changes;
+	std::unordered_map<size_t, std::pair<duint, duint>> reg_changes; // [key]: offset of regdump,  [value]: old value(first) and new value(second)
 	TraceRegDump reg_dump;
 	uint32_t id; // (when 'id' is 0, it means instruction is the first one in trace file)
 	uint32_t dbg_id; // do not change!
