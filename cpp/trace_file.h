@@ -4,6 +4,7 @@
 #include <string>
 #include <map>
 #include <fstream>
+#include <filesystem>
 #include <json/json.h>
 #include <capstone/capstone.h>
 
@@ -40,6 +41,7 @@ struct InstructionRecord {
 	// uint8_t size;    // use 'bytes.size()' instead of 'size','size' means what is the lenght(in bytes) of instruction.
 	std::vector<MemoryAccessRecord> mem_accs;
 	std::unordered_map<size_t, std::pair<duint, duint>> reg_changes; // [key]: offset of regdump,  [value]: old value(first) and new value(second)
+	uint32_t thread_id;
 	TraceRegDump reg_dump;
 	uint32_t id; // (when 'id' is 0, it means instruction is the first one in trace file)
 	uint32_t dbg_id; // do not change!

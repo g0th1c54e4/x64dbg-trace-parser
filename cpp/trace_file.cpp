@@ -2,6 +2,7 @@
 
 TraceData parse_x64dbg_trace(std::string filename) {
     std::ifstream f;
+    std::uintmax_t file_size = std::filesystem::file_size(filename);
 
     f.open(filename, std::ios::in | std::ios::binary);
     if (!f.is_open()) {
@@ -39,7 +40,8 @@ TraceData parse_x64dbg_trace(std::string filename) {
     trace_data.compression = json_root["compression"].asString();
     trace_data.version = json_root["ver"].asInt();
 
-    trace_data.record.reserve(500000);
+    size_t probably_ins_num = (file_size / 30ULL); // average 30 bytes -> 1 instruction
+    trace_data.record.reserve(probably_ins_num);
 
     csh hcs;
     if (cs_open(CS_ARCH_X86, ((arch == "x64") ? CS_MODE_64 : CS_MODE_32), &hcs) != CS_ERR_OK) {
@@ -53,6 +55,7 @@ TraceData parse_x64dbg_trace(std::string filename) {
     f.read(reinterpret_cast<char*>(&block_type), 1);
     TraceRegDump reg_dump{};
     uint32_t inst_idx = 0;
+    uint32_t current_thread_id = 0;
     while (block_type == 0x00 && !f.eof()) {
         InstructionRecord inst_record{};
 
@@ -65,46 +68,45 @@ TraceData parse_x64dbg_trace(std::string filename) {
         uint8_t thread_id_bit = (flags_and_opcode_size >> 7) & 1; // msb
         uint8_t opcode_size = flags_and_opcode_size & 15;  // lsbs
 
-        uint32_t thread_id = 0;
         if (thread_id_bit > 0) {
-            f.read(reinterpret_cast<char*>(&thread_id), 4);
+            f.read(reinterpret_cast<char*>(&current_thread_id), 4);
         }
+        inst_record.thread_id = current_thread_id;
 
-        std::vector<uint8_t> opcodes(opcode_size);
-        f.read(reinterpret_cast<char*>(opcodes.data()), opcode_size);
-        inst_record.bytes = opcodes;
+        inst_record.bytes.resize(opcode_size);
+        f.read(reinterpret_cast<char*>(inst_record.bytes.data()), opcode_size);
 
-        std::vector<uint8_t> register_change_position; // array
-        std::vector<duint> register_change_new_data{}; // array
+        std::vector<uint8_t> register_change_position(register_changes); // array
+        std::vector<duint> register_change_new_data(register_changes); // array
         for (size_t i = 0; i < register_changes; i++) {
             uint8_t reg = 0;
             f.read(reinterpret_cast<char*>(&reg), 1);
-            register_change_position.push_back(reg);
+            register_change_position[i] = reg;
         }
         for (size_t i = 0; i < register_changes; i++) {
             duint new_data = 0;
             f.read(reinterpret_cast<char*>(&new_data), sizeof(duint));
-            register_change_new_data.push_back(new_data);
+            register_change_new_data[i] = new_data;
         }
 
-        std::vector<uint8_t> memory_access_flags;
-        std::vector<duint> memory_access_addresses{};
-        std::vector<duint> memory_access_old_data{};
+        std::vector<uint8_t> memory_access_flags(memory_accesses);
+        std::vector<duint> memory_access_addresses(memory_accesses);
+        std::vector<duint> memory_access_old_data(memory_accesses);
         std::vector<duint> memory_access_new_data{};
         for (size_t i = 0; i < memory_accesses; i++) {
             uint8_t flag = 0;
             f.read(reinterpret_cast<char*>(&flag), 1);
-            memory_access_flags.push_back(flag);
+            memory_access_flags[i] = flag;
         }
         for (size_t i = 0; i < memory_accesses; i++) {
             duint address = 0;
             f.read(reinterpret_cast<char*>(&address), sizeof(duint));
-            memory_access_addresses.push_back(address);
+            memory_access_addresses[i] = address;
         }
         for (size_t i = 0; i < memory_accesses; i++) {
             duint old_data = 0;
             f.read(reinterpret_cast<char*>(&old_data), sizeof(duint));
-            memory_access_old_data.push_back(old_data);
+            memory_access_old_data[i] = old_data;
         }
         for (size_t i = 0; i < memory_accesses; i++) {
             if ((memory_access_flags[i] & 1) == 0) {
@@ -138,6 +140,11 @@ TraceData parse_x64dbg_trace(std::string filename) {
         inst_record.reg_dump = reg_dump;
         inst_record.ins_address = reg_dump.regcontext.cip;
 
+        cs_insn* pcsins;
+        if (cs_disasm(hcs, inst_record.bytes.data(), inst_record.bytes.size(), inst_record.ins_address, 1, &pcsins) == 0) {
+            throw std::exception("Disassembly instruction failed.");
+        }
+
         size_t new_data_counter = 0;
         for (size_t i = 0; i < memory_accesses; i++) {
             MemoryAccessRecord mem_acc{};
@@ -145,10 +152,6 @@ TraceData parse_x64dbg_trace(std::string filename) {
             uint8_t flag = memory_access_flags[i];
             mem_acc.old_data = memory_access_old_data[i];
 
-            cs_insn* pcsins;
-            if (cs_disasm(hcs, inst_record.bytes.data(), inst_record.bytes.size(), inst_record.ins_address, 1, &pcsins) == 0) {
-                throw std::exception("Disassembly instruction failed.");
-            }
             for (size_t j = 0; j < pcsins->detail->x86.op_count; j++) {
                 if (pcsins->detail->x86.operands[j].type == X86_OP_MEM) {
                     // movs
@@ -176,7 +179,7 @@ TraceData parse_x64dbg_trace(std::string filename) {
                     break;
                 }
             }
-            cs_free(pcsins, 1);
+            
 
             if ((flag & 1) == 0) {
                 mem_acc.new_data = memory_access_new_data[new_data_counter];
@@ -191,6 +194,7 @@ TraceData parse_x64dbg_trace(std::string filename) {
 
             inst_record.mem_accs.push_back(mem_acc);
         }
+        cs_free(pcsins, 1);
 
         inst_record.id = inst_idx;
         inst_record.dbg_id = inst_idx;
