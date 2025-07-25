@@ -40,7 +40,7 @@ TraceData parse_x64dbg_trace(std::string filename) {
     trace_data.compression = json_root["compression"].asString();
     trace_data.version = json_root["ver"].asInt();
 
-    size_t probably_ins_num = (file_size / 30ULL); // average 30 bytes -> 1 instruction
+    size_t probably_ins_num = (file_size / ((arch == "x64") ? 40ULL : 30ULL)); // average 30 bytes(32bit)/40 bytes(64bit) -> 1 instruction
     trace_data.record.reserve(probably_ins_num);
 
     csh hcs;
