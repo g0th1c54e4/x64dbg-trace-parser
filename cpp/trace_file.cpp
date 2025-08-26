@@ -34,11 +34,13 @@ TraceData parse_x64dbg_trace(std::string filename) {
     std::string arch = json_root["arch"].asString();
     trace_data.arch = ((arch == "x64") ? TraceDataArch::X86_64 : TraceDataArch::X86_32);
     trace_data.ptr_size = ((arch == "x64") ? sizeof(uint64_t) : sizeof(uint32_t));
-    trace_data.target_filename = json_root["path"].asString();
-    trace_data.hashAlgorithm = json_root["hashAlgorithm"].asString();
-    trace_data.hash = json_root["hash"].asString();
-    trace_data.compression = json_root["compression"].asString();
-    trace_data.version = json_root["ver"].asInt();
+    trace_data.json_blob = json_root;
+
+    //trace_data.target_filename = json_root["path"].asString();
+    //trace_data.hashAlgorithm = json_root["hashAlgorithm"].asString();
+    //trace_data.hash = json_root["hash"].asString();
+    //trace_data.compression = json_root["compression"].asString();
+    //trace_data.version = json_root["ver"].asInt();
 
     size_t probably_ins_num = (file_size / ((arch == "x64") ? 40ULL : 30ULL)); // average 30 bytes(32bit)/40 bytes(64bit) -> 1 instruction
     trace_data.record.reserve(probably_ins_num);

@@ -44,19 +44,13 @@ struct InstructionRecord {
 	uint32_t thread_id;
 	TraceRegDump reg_dump;
 	uint32_t id; // (when 'id' is 0, it means instruction is the first one in trace file)
-	uint32_t dbg_id; // do not change!
+	uint32_t dbg_id; // do not change!(It is convenient to compare in x64dbg)
 };
 
 struct TraceData {
-	int version;
 	std::string trace_filename;
-	std::string target_filename;
-	std::string hashAlgorithm;
-	std::string hash;
-	std::string compression;
-
+	Json::Value json_blob;
 	size_t ptr_size;
-
 	TraceDataArch arch;
 	std::vector<InstructionRecord> record;
 };
