@@ -182,6 +182,10 @@ TraceData parse_x64dbg_trace(std::string filename) {
 
                 uint8_t flag = memory_access_flags[i];
                 mem_acc.old_data = memory_access_old_data[i];
+                mem_acc.type = AccessType::READ;
+                if ((flag & 1) == 0) {
+                    mem_acc.type = AccessType::WRITE;
+                }
 
                 for (size_t j = 0; j < pcsins->detail->x86.op_count; j++) {
                     if (pcsins->detail->x86.operands[j].type == X86_OP_MEM) {
